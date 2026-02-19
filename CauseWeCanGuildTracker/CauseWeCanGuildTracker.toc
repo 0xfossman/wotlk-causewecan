@@ -1,0 +1,8 @@
+## Interface: 30300
+## Title: Cause We Can Guild Tracker
+## Notes: Shares guildmate positions and guild alerts
+## Author: Cause We Can
+## Version: 1.0.0
+## SavedVariables: CWCGTDB
+
+CauseWeCanGuildTracker.lua
