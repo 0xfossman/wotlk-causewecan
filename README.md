@@ -8,8 +8,7 @@ This repository contains a Wrath of the Lich King (3.3.5a) addon in `CauseWeCanG
 ## Current functionality
 
 ### 1) Guildmate position sharing (30-second interval)
-- The addon joins/uses the addon tracking channel `CWCGT_POS` and sends your character position every **30 seconds**.
-- If joining that channel fails, it falls back to guild addon messages.
+- The addon sends your character position to the guild via addon messages every **30 seconds**.
 - Shared payload includes: player name, level, zone, continent, zone index, X, Y.
 - Position data is refreshed on a timer to reduce performance impact.
 
@@ -25,11 +24,8 @@ This repository contains a Wrath of the Lich King (3.3.5a) addon in `CauseWeCanG
   - character level
   - zone/location
 
-### 4) Level-up alert to guild chat (English)
-- When a player reaches a new level, the addon sends an English guild chat message with character name, new level, and location.
-
-### 5) Guild bank activity alerts to officer chat (English)
-- On guild bank log updates, the addon can post English officer chat messages for:
+### 4) Guild bank activity alerts to guild chat (English)
+- On guild bank log updates, the addon can post English guild chat messages for:
   - item deposits
   - item withdrawals
   - money deposits

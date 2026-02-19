@@ -2,49 +2,16 @@ local addonName = ...
 local CWCGT = CreateFrame("Frame", "CWCGTFrame")
 
 local PREFIX = "CWCGT"
-local TRACKING_CHANNEL_NAME = "CWCGT_POS"
 local POSITION_INTERVAL = 30
 local ICON_SIZE = 14
 
 CWCGT.players = {}
 CWCGT.elapsed = 0
 CWCGT.iconPool = {}
-CWCGT.bankSeenEntries = {}
-CWCGT.bankSnapshotReady = false
-CWCGT.trackingChannelId = 0
+CWCGT.lastBankEntry = nil
 
 local function PlayerIsInGuild()
     return (GetGuildInfo("player") ~= nil)
-end
-
-local function EnsureTrackingChannel()
-    if not JoinChannelByName or not GetChannelName then
-        return false
-    end
-
-    local channelId = GetChannelName(TRACKING_CHANNEL_NAME)
-    if channelId and channelId > 0 then
-        CWCGT.trackingChannelId = channelId
-        return true
-    end
-
-    JoinChannelByName(TRACKING_CHANNEL_NAME)
-
-    channelId = GetChannelName(TRACKING_CHANNEL_NAME)
-    if channelId and channelId > 0 then
-        CWCGT.trackingChannelId = channelId
-        return true
-    end
-
-    return false
-end
-
-local function SendTrackingMessage(message)
-    if EnsureTrackingChannel() then
-        SendAddonMessage(PREFIX, message, "CHANNEL", tostring(CWCGT.trackingChannelId))
-    else
-        SendAddonMessage(PREFIX, message, "GUILD")
-    end
 end
 
 local function GetPlayerPositionData()
@@ -96,7 +63,7 @@ local function SendPositionUpdate()
         string.format("%.4f", info.y)
     )
 
-    SendTrackingMessage(message)
+    SendAddonMessage(PREFIX, message, "GUILD")
 end
 
 local function CreateIcon(index)
@@ -190,23 +157,6 @@ local function PostDeathMessage()
     )
 end
 
-
-local function PostLevelUpMessage(newLevel)
-    if not PlayerIsInGuild() then
-        return
-    end
-
-    local info = GetPlayerPositionData()
-    local zone = info and info.zone or (GetRealZoneText() or "Unknown")
-    local level = tonumber(newLevel) or UnitLevel("player") or 0
-    local name = UnitName("player") or "Unknown"
-
-    SendChatMessage(
-        string.format("Guild alert: %s reached level %d in %s.", name, level, zone),
-        "GUILD"
-    )
-end
-
 local function BuildBankMessage(entryType, playerName, itemLink, count, money)
     if entryType == "deposit" and itemLink then
         return string.format("Guild bank update: %s deposited %sx %s.", playerName, count or 1, itemLink)
@@ -220,108 +170,7 @@ local function BuildBankMessage(entryType, playerName, itemLink, count, money)
     if entryType == "moneyWithdraw" then
         return string.format("Guild bank update: %s withdrew %s.", playerName, GetCoinTextureString(money or 0))
     end
-    if entryType == "deposit" and money then
-        return string.format("Guild bank update: %s deposited %s.", playerName, GetCoinTextureString(money or 0))
-    end
-    if entryType == "withdraw" and money then
-        return string.format("Guild bank update: %s withdrew %s.", playerName, GetCoinTextureString(money or 0))
-    end
     return nil
-end
-
-local function BuildBankEntryID(prefix, entryType, playerName, itemLink, count, year, month, day, hour, money)
-    return table.concat({
-        prefix,
-        tostring(entryType),
-        tostring(playerName),
-        tostring(itemLink),
-        tostring(count),
-        tostring(year),
-        tostring(month),
-        tostring(day),
-        tostring(hour),
-        tostring(money),
-    }, "|")
-end
-
-local function SendOfficerBankAlert(message)
-    if not message then
-        return
-    end
-
-    SendChatMessage(message, "OFFICER")
-end
-
-local function SnapshotGuildBankLogs()
-    local seen = {}
-
-    local numTabs = GetNumGuildBankTabs() or 0
-    for tab = 1, numTabs do
-        local numTransactions = GetNumGuildBankTransactions(tab) or 0
-        for index = 1, numTransactions do
-            local entryType, playerName, itemLink, count, tab1, tab2, year, month, day, hour, money = GetGuildBankTransaction(tab, index)
-            if entryType and playerName then
-                local id = BuildBankEntryID("ITEM", entryType, playerName, itemLink, count, year, month, day, hour, money)
-                seen[id] = true
-            end
-        end
-    end
-
-    local numMoneyTransactions = GetNumGuildBankMoneyTransactions and GetNumGuildBankMoneyTransactions() or 0
-    for index = 1, numMoneyTransactions do
-        local entryType, playerName, amount, year, month, day, hour = GetGuildBankMoneyTransaction(index)
-        if entryType and playerName then
-            local id = BuildBankEntryID("MONEY", entryType, playerName, nil, nil, year, month, day, hour, amount)
-            seen[id] = true
-        end
-    end
-
-    CWCGT.bankSeenEntries = seen
-end
-
-local function ProcessGuildBankLogs()
-    local newMessages = {}
-
-    local numTabs = GetNumGuildBankTabs() or 0
-    for tab = 1, numTabs do
-        local numTransactions = GetNumGuildBankTransactions(tab) or 0
-        for index = 1, numTransactions do
-            local entryType, playerName, itemLink, count, tab1, tab2, year, month, day, hour, money = GetGuildBankTransaction(tab, index)
-            if entryType and playerName then
-                local id = BuildBankEntryID("ITEM", entryType, playerName, itemLink, count, year, month, day, hour, money)
-                if not CWCGT.bankSeenEntries[id] then
-                    CWCGT.bankSeenEntries[id] = true
-                    local msg = BuildBankMessage(entryType, playerName, itemLink, count, money)
-                    if msg then
-                        table.insert(newMessages, msg)
-                    end
-                else
-                    break
-                end
-            end
-        end
-    end
-
-    local numMoneyTransactions = GetNumGuildBankMoneyTransactions and GetNumGuildBankMoneyTransactions() or 0
-    for index = 1, numMoneyTransactions do
-        local entryType, playerName, amount, year, month, day, hour = GetGuildBankMoneyTransaction(index)
-        if entryType and playerName then
-            local id = BuildBankEntryID("MONEY", entryType, playerName, nil, nil, year, month, day, hour, amount)
-            if not CWCGT.bankSeenEntries[id] then
-                CWCGT.bankSeenEntries[id] = true
-                local msg = BuildBankMessage(entryType, playerName, nil, nil, amount)
-                if msg then
-                    table.insert(newMessages, msg)
-                end
-            else
-                break
-            end
-        end
-    end
-
-    for i = #newMessages, 1, -1 do
-        SendOfficerBankAlert(newMessages[i])
-    end
 end
 
 local function HandleGuildBankLog()
@@ -329,13 +178,32 @@ local function HandleGuildBankLog()
         return
     end
 
-    if not CWCGT.bankSnapshotReady then
-        SnapshotGuildBankLogs()
-        CWCGT.bankSnapshotReady = true
+    local tab = GetCurrentGuildBankTab()
+    if not tab then
         return
     end
 
-    ProcessGuildBankLogs()
+    local num = GetNumGuildBankTransactions(tab)
+    if not num or num < 1 then
+        return
+    end
+
+    local entryType, playerName, itemLink, count, tab1, tab2, year, month, day, hour, money = GetGuildBankTransaction(tab, 1)
+    if not entryType or not playerName then
+        return
+    end
+
+    local id = table.concat({entryType, playerName, tostring(itemLink), tostring(count), tostring(year), tostring(month), tostring(day), tostring(hour), tostring(money)}, "|")
+    if CWCGT.lastBankEntry == id then
+        return
+    end
+
+    CWCGT.lastBankEntry = id
+
+    local msg = BuildBankMessage(entryType, playerName, itemLink, count, money)
+    if msg then
+        SendChatMessage(msg, "GUILD")
+    end
 end
 
 local function PurgeExpiredPlayers()
@@ -354,18 +222,14 @@ CWCGT:SetScript("OnEvent", function(_, event, ...)
         else
             RegisterAddonMessagePrefix(PREFIX)
         end
-        EnsureTrackingChannel()
         SendPositionUpdate()
     elseif event == "CHAT_MSG_ADDON" then
         local prefix, message, channel = ...
-        if prefix == PREFIX and (channel == "GUILD" or channel == "CHANNEL") then
+        if prefix == PREFIX and channel == "GUILD" then
             HandlePositionMessage(message)
         end
     elseif event == "PLAYER_DEAD" then
         PostDeathMessage()
-    elseif event == "PLAYER_LEVEL_UP" then
-        local newLevel = ...
-        PostLevelUpMessage(newLevel)
     elseif event == "GUILDBANKLOG_UPDATE" then
         HandleGuildBankLog()
     elseif event == "WORLD_MAP_UPDATE" then
@@ -386,6 +250,5 @@ end)
 CWCGT:RegisterEvent("PLAYER_LOGIN")
 CWCGT:RegisterEvent("CHAT_MSG_ADDON")
 CWCGT:RegisterEvent("PLAYER_DEAD")
-CWCGT:RegisterEvent("PLAYER_LEVEL_UP")
 CWCGT:RegisterEvent("GUILDBANKLOG_UPDATE")
 CWCGT:RegisterEvent("WORLD_MAP_UPDATE")
